@@ -1,0 +1,897 @@
+# =============================================================================
+# HelpBot LDAP Bootstrap — 50 users, departments, app groups
+# =============================================================================
+
+# ─── Organizational Units ────────────────────────────────────────────────────
+dn: ou=Users,dc=support,dc=local
+objectClass: organizationalUnit
+ou: Users
+
+dn: ou=Groups,dc=support,dc=local
+objectClass: organizationalUnit
+ou: Groups
+
+# ─── Department Groups ───────────────────────────────────────────────────────
+dn: cn=IT,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: IT
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=HR,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: HR
+member: uid=bjones,ou=Users,dc=support,dc=local
+
+dn: cn=Finance,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: Finance
+member: uid=asmith,ou=Users,dc=support,dc=local
+
+dn: cn=Sales,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: Sales
+member: uid=jmartin,ou=Users,dc=support,dc=local
+
+dn: cn=Management,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: Management
+member: uid=cdurand,ou=Users,dc=support,dc=local
+
+dn: cn=DevOps,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: DevOps
+member: uid=dwhite,ou=Users,dc=support,dc=local
+
+# ─── Application Groups ──────────────────────────────────────────────────────
+dn: cn=grp-vpn,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-vpn
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=grp-outlook,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-outlook
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=grp-teams,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-teams
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=grp-sharepoint,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-sharepoint
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=grp-erp,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-erp
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=grp-crm,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-crm
+member: uid=jdoe,ou=Users,dc=support,dc=local
+
+dn: cn=grp-hr,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-hr
+member: uid=bjones,ou=Users,dc=support,dc=local
+
+dn: cn=grp-devtools,ou=Groups,dc=support,dc=local
+objectClass: groupOfNames
+cn: grp-devtools
+member: uid=dwhite,ou=Users,dc=support,dc=local
+
+# =============================================================================
+# USERS (50 total)
+# All passwords: Password123!
+# =============================================================================
+
+# ─── IT Department (8 users) ─────────────────────────────────────────────────
+dn: uid=jdoe,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: jdoe
+cn: John Doe
+sn: Doe
+givenName: John
+displayName: John Doe
+mail: jdoe@support.local
+departmentNumber: IT
+title: IT Technician
+uidNumber: 1001
+gidNumber: 1001
+homeDirectory: /home/jdoe
+userPassword: Password123!
+
+dn: uid=mwilson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: mwilson
+cn: Mark Wilson
+sn: Wilson
+givenName: Mark
+displayName: Mark Wilson
+mail: mwilson@support.local
+departmentNumber: IT
+title: IT Manager
+uidNumber: 1002
+gidNumber: 1001
+homeDirectory: /home/mwilson
+userPassword: Password123!
+
+dn: uid=dwhite,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: dwhite
+cn: David White
+sn: White
+givenName: David
+displayName: David White
+mail: dwhite@support.local
+departmentNumber: IT
+title: System Administrator
+uidNumber: 1003
+gidNumber: 1001
+homeDirectory: /home/dwhite
+userPassword: Password123!
+
+dn: uid=tmorgan,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: tmorgan
+cn: Tom Morgan
+sn: Morgan
+givenName: Tom
+displayName: Tom Morgan
+mail: tmorgan@support.local
+departmentNumber: IT
+title: Network Engineer
+uidNumber: 1011
+gidNumber: 1001
+homeDirectory: /home/tmorgan
+userPassword: Password123!
+
+dn: uid=lgarcia,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: lgarcia
+cn: Luis Garcia
+sn: Garcia
+givenName: Luis
+displayName: Luis Garcia
+mail: lgarcia@support.local
+departmentNumber: IT
+title: Security Analyst
+uidNumber: 1012
+gidNumber: 1001
+homeDirectory: /home/lgarcia
+userPassword: Password123!
+
+dn: uid=nthomas,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: nthomas
+cn: Nina Thomas
+sn: Thomas
+givenName: Nina
+displayName: Nina Thomas
+mail: nthomas@support.local
+departmentNumber: IT
+title: DevOps Engineer
+uidNumber: 1013
+gidNumber: 1001
+homeDirectory: /home/nthomas
+userPassword: Password123!
+
+dn: uid=pmiller,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: pmiller
+cn: Paul Miller
+sn: Miller
+givenName: Paul
+displayName: Paul Miller
+mail: pmiller@support.local
+departmentNumber: IT
+title: Helpdesk Technician
+uidNumber: 1014
+gidNumber: 1001
+homeDirectory: /home/pmiller
+userPassword: Password123!
+
+dn: uid=klee,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: klee
+cn: Karen Lee
+sn: Lee
+givenName: Karen
+displayName: Karen Lee
+mail: klee@support.local
+departmentNumber: IT
+title: Database Administrator
+uidNumber: 1015
+gidNumber: 1001
+homeDirectory: /home/klee
+userPassword: Password123!
+
+# ─── HR Department (7 users) ─────────────────────────────────────────────────
+dn: uid=bjones,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: bjones
+cn: Bob Jones
+sn: Jones
+givenName: Bob
+displayName: Bob Jones
+mail: bjones@support.local
+departmentNumber: HR
+title: HR Coordinator
+uidNumber: 1004
+gidNumber: 1002
+homeDirectory: /home/bjones
+userPassword: Password123!
+
+dn: uid=sjohnson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: sjohnson
+cn: Sarah Johnson
+sn: Johnson
+givenName: Sarah
+displayName: Sarah Johnson
+mail: sjohnson@support.local
+departmentNumber: HR
+title: HR Manager
+uidNumber: 1005
+gidNumber: 1002
+homeDirectory: /home/sjohnson
+userPassword: Password123!
+
+dn: uid=rclark,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: rclark
+cn: Rachel Clark
+sn: Clark
+givenName: Rachel
+displayName: Rachel Clark
+mail: rclark@support.local
+departmentNumber: HR
+title: HR Specialist
+uidNumber: 1016
+gidNumber: 1002
+homeDirectory: /home/rclark
+userPassword: Password123!
+
+dn: uid=glewis,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: glewis
+cn: George Lewis
+sn: Lewis
+givenName: George
+displayName: George Lewis
+mail: glewis@support.local
+departmentNumber: HR
+title: HR Analyst
+uidNumber: 1017
+gidNumber: 1002
+homeDirectory: /home/glewis
+userPassword: Password123!
+
+dn: uid=frobinson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: frobinson
+cn: Fiona Robinson
+sn: Robinson
+givenName: Fiona
+displayName: Fiona Robinson
+mail: frobinson@support.local
+departmentNumber: HR
+title: Recruiter
+uidNumber: 1018
+gidNumber: 1002
+homeDirectory: /home/frobinson
+userPassword: Password123!
+
+dn: uid=hwalk,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: hwalk
+cn: Henry Walker
+sn: Walker
+givenName: Henry
+displayName: Henry Walker
+mail: hwalk@support.local
+departmentNumber: HR
+title: Training Coordinator
+uidNumber: 1019
+gidNumber: 1002
+homeDirectory: /home/hwalk
+userPassword: Password123!
+
+dn: uid=opeters,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: opeters
+cn: Olivia Peters
+sn: Peters
+givenName: Olivia
+displayName: Olivia Peters
+mail: opeters@support.local
+departmentNumber: HR
+title: HR Director
+uidNumber: 1020
+gidNumber: 1002
+homeDirectory: /home/opeters
+userPassword: Password123!
+
+# ─── Finance Department (7 users) ────────────────────────────────────────────
+dn: uid=asmith,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: asmith
+cn: Alice Smith
+sn: Smith
+givenName: Alice
+displayName: Alice Smith
+mail: asmith@support.local
+departmentNumber: Finance
+title: Financial Analyst
+uidNumber: 1006
+gidNumber: 1003
+homeDirectory: /home/asmith
+userPassword: Password123!
+
+dn: uid=ebrown,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: ebrown
+cn: Emma Brown
+sn: Brown
+givenName: Emma
+displayName: Emma Brown
+mail: ebrown@support.local
+departmentNumber: Finance
+title: Accountant
+uidNumber: 1007
+gidNumber: 1003
+homeDirectory: /home/ebrown
+userPassword: Password123!
+
+dn: uid=cwright,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: cwright
+cn: Chris Wright
+sn: Wright
+givenName: Chris
+displayName: Chris Wright
+mail: cwright@support.local
+departmentNumber: Finance
+title: Finance Manager
+uidNumber: 1021
+gidNumber: 1003
+homeDirectory: /home/cwright
+userPassword: Password123!
+
+dn: uid=mscott,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: mscott
+cn: Michael Scott
+sn: Scott
+givenName: Michael
+displayName: Michael Scott
+mail: mscott@support.local
+departmentNumber: Finance
+title: Auditor
+uidNumber: 1022
+gidNumber: 1003
+homeDirectory: /home/mscott
+userPassword: Password123!
+
+dn: uid=iturner,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: iturner
+cn: Isabelle Turner
+sn: Turner
+givenName: Isabelle
+displayName: Isabelle Turner
+mail: iturner@support.local
+departmentNumber: Finance
+title: Budget Analyst
+uidNumber: 1023
+gidNumber: 1003
+homeDirectory: /home/iturner
+userPassword: Password123!
+
+dn: uid=dphillips,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: dphillips
+cn: Daniel Phillips
+sn: Phillips
+givenName: Daniel
+displayName: Daniel Phillips
+mail: dphillips@support.local
+departmentNumber: Finance
+title: Controller
+uidNumber: 1024
+gidNumber: 1003
+homeDirectory: /home/dphillips
+userPassword: Password123!
+
+dn: uid=vcampbell,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: vcampbell
+cn: Victoria Campbell
+sn: Campbell
+givenName: Victoria
+displayName: Victoria Campbell
+mail: vcampbell@support.local
+departmentNumber: Finance
+title: CFO
+uidNumber: 1025
+gidNumber: 1003
+homeDirectory: /home/vcampbell
+userPassword: Password123!
+
+# ─── Sales Department (8 users) ──────────────────────────────────────────────
+dn: uid=jmartin,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: jmartin
+cn: James Martin
+sn: Martin
+givenName: James
+displayName: James Martin
+mail: jmartin@support.local
+departmentNumber: Sales
+title: Sales Manager
+uidNumber: 1008
+gidNumber: 1004
+homeDirectory: /home/jmartin
+userPassword: Password123!
+
+dn: uid=banderson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: banderson
+cn: Brian Anderson
+sn: Anderson
+givenName: Brian
+displayName: Brian Anderson
+mail: banderson@support.local
+departmentNumber: Sales
+title: Sales Representative
+uidNumber: 1026
+gidNumber: 1004
+homeDirectory: /home/banderson
+userPassword: Password123!
+
+dn: uid=sjackson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: sjackson
+cn: Sophia Jackson
+sn: Jackson
+givenName: Sophia
+displayName: Sophia Jackson
+mail: sjackson@support.local
+departmentNumber: Sales
+title: Account Executive
+uidNumber: 1027
+gidNumber: 1004
+homeDirectory: /home/sjackson
+userPassword: Password123!
+
+dn: uid=rharris,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: rharris
+cn: Robert Harris
+sn: Harris
+givenName: Robert
+displayName: Robert Harris
+mail: rharris@support.local
+departmentNumber: Sales
+title: Sales Analyst
+uidNumber: 1028
+gidNumber: 1004
+homeDirectory: /home/rharris
+userPassword: Password123!
+
+dn: uid=emartinez,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: emartinez
+cn: Elena Martinez
+sn: Martinez
+givenName: Elena
+displayName: Elena Martinez
+mail: emartinez@support.local
+departmentNumber: Sales
+title: Business Developer
+uidNumber: 1029
+gidNumber: 1004
+homeDirectory: /home/emartinez
+userPassword: Password123!
+
+dn: uid=wrobinson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: wrobinson
+cn: William Robinson
+sn: Robinson
+givenName: William
+displayName: William Robinson
+mail: wrobinson@support.local
+departmentNumber: Sales
+title: Sales Director
+uidNumber: 1030
+gidNumber: 1004
+homeDirectory: /home/wrobinson
+userPassword: Password123!
+
+dn: uid=ataylor,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: ataylor
+cn: Anna Taylor
+sn: Taylor
+givenName: Anna
+displayName: Anna Taylor
+mail: ataylor@support.local
+departmentNumber: Sales
+title: Inside Sales
+uidNumber: 1031
+gidNumber: 1004
+homeDirectory: /home/ataylor
+userPassword: Password123!
+
+dn: uid=fmoore,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: fmoore
+cn: Frank Moore
+sn: Moore
+givenName: Frank
+displayName: Frank Moore
+mail: fmoore@support.local
+departmentNumber: Sales
+title: Key Account Manager
+uidNumber: 1032
+gidNumber: 1004
+homeDirectory: /home/fmoore
+userPassword: Password123!
+
+# ─── Management (5 users) ────────────────────────────────────────────────────
+dn: uid=cdurand,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: cdurand
+cn: Claire Durand
+sn: Durand
+givenName: Claire
+displayName: Claire Durand
+mail: cdurand@support.local
+departmentNumber: Management
+title: CEO
+uidNumber: 1009
+gidNumber: 1005
+homeDirectory: /home/cdurand
+userPassword: Password123!
+
+dn: uid=pbaker,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: pbaker
+cn: Patricia Baker
+sn: Baker
+givenName: Patricia
+displayName: Patricia Baker
+mail: pbaker@support.local
+departmentNumber: Management
+title: COO
+uidNumber: 1033
+gidNumber: 1005
+homeDirectory: /home/pbaker
+userPassword: Password123!
+
+dn: uid=jevans,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: jevans
+cn: Jack Evans
+sn: Evans
+givenName: Jack
+displayName: Jack Evans
+mail: jevans@support.local
+departmentNumber: Management
+title: CTO
+uidNumber: 1034
+gidNumber: 1005
+homeDirectory: /home/jevans
+userPassword: Password123!
+
+dn: uid=mnelson,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: mnelson
+cn: Monica Nelson
+sn: Nelson
+givenName: Monica
+displayName: Monica Nelson
+mail: mnelson@support.local
+departmentNumber: Management
+title: VP Operations
+uidNumber: 1035
+gidNumber: 1005
+homeDirectory: /home/mnelson
+userPassword: Password123!
+
+dn: uid=rcarter,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: rcarter
+cn: Richard Carter
+sn: Carter
+givenName: Richard
+displayName: Richard Carter
+mail: rcarter@support.local
+departmentNumber: Management
+title: Director of Strategy
+uidNumber: 1036
+gidNumber: 1005
+homeDirectory: /home/rcarter
+userPassword: Password123!
+
+# ─── Marketing (5 users) ─────────────────────────────────────────────────────
+dn: uid=lmitchell,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: lmitchell
+cn: Laura Mitchell
+sn: Mitchell
+givenName: Laura
+displayName: Laura Mitchell
+mail: lmitchell@support.local
+departmentNumber: Marketing
+title: Marketing Manager
+uidNumber: 1037
+gidNumber: 1006
+homeDirectory: /home/lmitchell
+userPassword: Password123!
+
+dn: uid=sperez,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: sperez
+cn: Samuel Perez
+sn: Perez
+givenName: Samuel
+displayName: Samuel Perez
+mail: sperez@support.local
+departmentNumber: Marketing
+title: Content Strategist
+uidNumber: 1038
+gidNumber: 1006
+homeDirectory: /home/sperez
+userPassword: Password123!
+
+dn: uid=droberts,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: droberts
+cn: Diana Roberts
+sn: Roberts
+givenName: Diana
+displayName: Diana Roberts
+mail: droberts@support.local
+departmentNumber: Marketing
+title: SEO Specialist
+uidNumber: 1039
+gidNumber: 1006
+homeDirectory: /home/droberts
+userPassword: Password123!
+
+dn: uid=ogreen,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: ogreen
+cn: Oliver Green
+sn: Green
+givenName: Oliver
+displayName: Oliver Green
+mail: ogreen@support.local
+departmentNumber: Marketing
+title: Brand Manager
+uidNumber: 1040
+gidNumber: 1006
+homeDirectory: /home/ogreen
+userPassword: Password123!
+
+dn: uid=cadams,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: cadams
+cn: Charlotte Adams
+sn: Adams
+givenName: Charlotte
+displayName: Charlotte Adams
+mail: cadams@support.local
+departmentNumber: Marketing
+title: Digital Marketing Lead
+uidNumber: 1041
+gidNumber: 1006
+homeDirectory: /home/cadams
+userPassword: Password123!
+
+# ─── DevOps / Engineering (7 users) ──────────────────────────────────────────
+dn: uid=ahall,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: ahall
+cn: Andrew Hall
+sn: Hall
+givenName: Andrew
+displayName: Andrew Hall
+mail: ahall@support.local
+departmentNumber: DevOps
+title: Senior Developer
+uidNumber: 1042
+gidNumber: 1007
+homeDirectory: /home/ahall
+userPassword: Password123!
+
+dn: uid=myoung,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: myoung
+cn: Maya Young
+sn: Young
+givenName: Maya
+displayName: Maya Young
+mail: myoung@support.local
+departmentNumber: DevOps
+title: Backend Engineer
+uidNumber: 1043
+gidNumber: 1007
+homeDirectory: /home/myoung
+userPassword: Password123!
+
+dn: uid=tking,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: tking
+cn: Tyler King
+sn: King
+givenName: Tyler
+displayName: Tyler King
+mail: tking@support.local
+departmentNumber: DevOps
+title: Frontend Engineer
+uidNumber: 1044
+gidNumber: 1007
+homeDirectory: /home/tking
+userPassword: Password123!
+
+dn: uid=nscott,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: nscott
+cn: Nathan Scott
+sn: Scott
+givenName: Nathan
+displayName: Nathan Scott
+mail: nscott@support.local
+departmentNumber: DevOps
+title: DevOps Engineer
+uidNumber: 1045
+gidNumber: 1007
+homeDirectory: /home/nscott
+userPassword: Password123!
+
+dn: uid=ewhite,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: ewhite
+cn: Eva White
+sn: White
+givenName: Eva
+displayName: Eva White
+mail: ewhite@support.local
+departmentNumber: DevOps
+title: QA Engineer
+uidNumber: 1046
+gidNumber: 1007
+homeDirectory: /home/ewhite
+userPassword: Password123!
+
+dn: uid=jbennett,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: jbennett
+cn: Jake Bennett
+sn: Bennett
+givenName: Jake
+displayName: Jake Bennett
+mail: jbennett@support.local
+departmentNumber: DevOps
+title: Cloud Architect
+uidNumber: 1047
+gidNumber: 1007
+homeDirectory: /home/jbennett
+userPassword: Password123!
+
+dn: uid=acooper,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: acooper
+cn: Amy Cooper
+sn: Cooper
+givenName: Amy
+displayName: Amy Cooper
+mail: acooper@support.local
+departmentNumber: DevOps
+title: Data Engineer
+uidNumber: 1048
+gidNumber: 1007
+homeDirectory: /home/acooper
+userPassword: Password123!
+
+# ─── Legal & Compliance (3 users) ────────────────────────────────────────────
+dn: uid=mrichards,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: mrichards
+cn: Mark Richards
+sn: Richards
+givenName: Mark
+displayName: Mark Richards
+mail: mrichards@support.local
+departmentNumber: Legal
+title: Legal Counsel
+uidNumber: 1049
+gidNumber: 1008
+homeDirectory: /home/mrichards
+userPassword: Password123!
+
+dn: uid=jstone,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: jstone
+cn: Julia Stone
+sn: Stone
+givenName: Julia
+displayName: Julia Stone
+mail: jstone@support.local
+departmentNumber: Legal
+title: Compliance Officer
+uidNumber: 1050
+gidNumber: 1008
+homeDirectory: /home/jstone
+userPassword: Password123!
+
+# ─── Service Account ─────────────────────────────────────────────────────────
+dn: uid=svc-n8n,ou=Users,dc=support,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uid: svc-n8n
+cn: N8N Service Account
+sn: ServiceAccount
+displayName: N8N Service Account
+mail: svc-n8n@support.local
+departmentNumber: IT
+title: Service Account
+uidNumber: 1010
+gidNumber: 1001
+homeDirectory: /home/svc-n8n
+userPassword: Password123!

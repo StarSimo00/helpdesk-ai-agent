@@ -1,0 +1,32 @@
+# Node
+node_modules/
+dist/
+.npm/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+
+# Docker volumes (never commit data)
+postgres_data/
+ldap_data/
+ldap_config/
+n8n_data/
+
+# Environment files (contain secrets)
+helpdesk-frontend/.env
+*.env
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

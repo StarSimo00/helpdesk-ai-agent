@@ -1,0 +1,317 @@
+{
+  "name": "Helpdesk AI Agent v7",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -200,
+        0
+      ],
+      "id": "chat_trigger",
+      "name": "When chat message received",
+      "webhookId": "helpdesk-chat-v7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are HelpBot, an autonomous IT Level-1 Helpdesk assistant.\n\n## CRITICAL: HOW TO PASS INPUT TO TOOLS\nEvery tool receives a single plain string as input.\n- lookup_user: username only. Example: jdoe\n- unlock_account: username only. Example: bjones\n- reset_password: username only. Example: jdoe\n- search_kb: keywords only. Example: vpn connection failed\n- log_action: JSON string. Example: {\"action_type\":\"account_unlock\",\"target_user\":\"bjones\",\"details\":\"done\"}\nNever pass objects or extra text \u2014 just the raw value.\n\n## IDENTITY\nName: HelpBot | Role: IT N1 Support Agent\n\n## YOUR TOOLS\n\n**lookup_user** \u2014 Search OpenLDAP for a user. Returns name, dept, email, status (ACTIVE or LOCKED).\nALWAYS call before unlock_account or reset_password.\nInput: username only (e.g. jdoe)\n\n**unlock_account** \u2014 Unlock a LOCKED account.\nInput: username only (e.g. bjones)\n\n**reset_password** \u2014 Reset password, returns temp password like HdXXXXXXXXXX!\nShow temp password in a code block to the user.\nInput: username only (e.g. jdoe)\n\n**search_kb** \u2014 Search IT knowledge base.\nUse for: outlook, teams, vpn, printer, mfa, windows update.\nInput: keywords (e.g. vpn connection failed)\n\n**log_action** \u2014 Log completed action to audit DB.\nCall after every successful unlock or reset.\nInput: JSON string. Example: {\"action_type\":\"account_unlock\",\"target_user\":\"bjones\",\"details\":\"done\"}\n\n**create_jira_ticket** \u2014 Create Jira ticket.\nTask+Medium for access requests. Bug+High for N2 escalation.\n\n## DECISION FLOW\nLocked: lookup_user \u2192 unlock_account \u2192 log_action \u2192 confirm\nPassword: lookup_user \u2192 reset_password \u2192 log_action \u2192 show password\nSoftware issue: search_kb \u2192 give steps\nApp access: create_jira_ticket Task Medium\nCannot resolve: create_jira_ticket Bug High\n\n## RULES\n- ALWAYS call lookup_user before any write\n- Ask ONE question at a time if info missing\n- Show temp password in code block after reset\n- Show Jira ticket key after creation\n- Reply in same language as user (FR or EN)",
+          "maxIterations": 15
+        }
+      },
+      "id": "ai_agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen3:latest",
+        "options": {
+          "temperature": 0.1,
+          "numCtx": 4096
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        220
+      ],
+      "id": "ollama_model",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "sWdPuBHXzb5srp35",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "fromInput",
+        "tableName": "n8n_chat_memory",
+        "contextWindowLength": 20
+      },
+      "id": "pg_memory",
+      "name": "Postgres Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        100,
+        220
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ijA9RkvhWo5SUKQR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "lookup_user",
+        "description": "Search OpenLDAP for a user. Input: username only (e.g. jdoe). Returns name, dept, email, status.",
+        "language": "javaScript",
+        "jsCode": "const username = query.trim().toLowerCase();\nif (!username) return 'ERROR: username required';\nconst r = await $http({\n  method: 'POST',\n  url: 'http://helpdesk-ldap-api:5000/lookup',\n  headers: {'Content-Type': 'application/json'},\n  body: JSON.stringify({username})\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nif (!d.found) return 'User not found: ' + username;\nreturn 'User: ' + d.displayName + ' (' + username + ')'\n  + ' | Dept: ' + d.department\n  + ' | Title: ' + d.title\n  + ' | Email: ' + d.email\n  + ' | Status: ' + d.status\n  + ' | DN: ' + d.dn;\n"
+      },
+      "id": "tool_lookup",
+      "name": "lookup_user",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "name": "unlock_account",
+        "description": "Unlock a LOCKED OpenLDAP account. Input: username only (e.g. bjones).",
+        "language": "javaScript",
+        "jsCode": "const username = query.trim().toLowerCase();\nif (!username) return 'ERROR: username required';\nconst r = await $http({\n  method: 'POST',\n  url: 'http://helpdesk-ldap-api:5000/unlock',\n  headers: {'Content-Type': 'application/json'},\n  body: JSON.stringify({username})\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nif (d.success) return 'SUCCESS: ' + d.message;\nreturn 'ERROR: ' + (d.error || 'Unknown error');\n"
+      },
+      "id": "tool_unlock",
+      "name": "unlock_account",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        420,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "name": "reset_password",
+        "description": "Reset OpenLDAP user password. Returns temp password. Input: username only (e.g. jdoe).",
+        "language": "javaScript",
+        "jsCode": "const username = query.trim().toLowerCase();\nif (!username) return 'ERROR: username required';\nconst r = await $http({\n  method: 'POST',\n  url: 'http://helpdesk-ldap-api:5000/reset-password',\n  headers: {'Content-Type': 'application/json'},\n  body: JSON.stringify({username})\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nif (d.success) return 'SUCCESS: Password reset for ' + username + '. Temporary password: ' + d.tempPassword;\nreturn 'ERROR: ' + (d.error || 'Unknown error');\n"
+      },
+      "id": "tool_reset",
+      "name": "reset_password",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "name": "search_kb",
+        "description": "Search IT knowledge base. Input: keywords (e.g. vpn connection failed).",
+        "language": "javaScript",
+        "jsCode": "const keywords = query.trim().toLowerCase();\nif (!keywords) return 'ERROR: keywords required';\nconst r = await $http({\n  method: 'GET',\n  url: 'http://helpdesk-ldap-api:5000/search-kb?q=' + encodeURIComponent(keywords)\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nif (!d.results || d.results.length === 0) return 'No KB article found for: ' + keywords + '. Consider escalating to N2.';\nreturn d.results.map(a => 'ARTICLE: ' + a.title + '\\n' + a.solution_text).join('\\n\\n');\n"
+      },
+      "id": "tool_kb",
+      "name": "search_kb",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        860,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "name": "log_action",
+        "description": "Log completed action. Input: JSON string with action_type and target_user.",
+        "language": "javaScript",
+        "jsCode": "let data;\ntry { data = JSON.parse(query); }\ncatch(e) { data = {action_type: 'agent_action', target_user: 'unknown', details: query}; }\nconst r = await $http({\n  method: 'POST',\n  url: 'http://helpdesk-ldap-api:5000/log-action',\n  headers: {'Content-Type': 'application/json'},\n  body: JSON.stringify(data)\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nreturn 'Logged: ID ' + (d.id || 'ok');\n"
+      },
+      "id": "tool_log",
+      "name": "log_action",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "name": "create_jira_ticket",
+        "description": "Create a Jira ticket. Task+Medium for access requests. Bug+High for N2 escalations.",
+        "resource": "issue",
+        "operation": "create",
+        "summary": "={{ $fromAI('summary', 'Short ticket title', 'string') }}",
+        "additionalFields": {
+          "issueType": {
+            "name": "={{ $fromAI('issueType', 'Task or Bug', 'string') }}"
+          },
+          "priority": {
+            "name": "={{ $fromAI('priority', 'Medium or High', 'string') }}"
+          },
+          "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "={{ $fromAI('description', 'Full description', 'string') }}"
+                  }
+                ]
+              }
+            ]
+          },
+          "labels": [
+            "helpdesk-bot",
+            "n1-agent"
+          ]
+        }
+      },
+      "id": "tool_jira",
+      "name": "create_jira_ticket",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        440
+      ],
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "jira_cred",
+          "name": "Helpdesk Jira"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "lookup_user": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "unlock_account": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reset_password": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_kb": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "log_action": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_jira_ticket": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6fb5db74bbf67cde9c545b55a74d539ebcc5bd75a9cd8605db861e5e05e9f127"
+  }
+}

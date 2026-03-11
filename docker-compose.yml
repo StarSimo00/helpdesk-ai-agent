@@ -1,0 +1,114 @@
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: helpdesk-postgres
+    environment:
+      POSTGRES_DB: helpdesk
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: helpdeskpass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpdesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: helpdesk-openldap
+    environment:
+      LDAP_ORGANISATION: "Support Local"
+      LDAP_DOMAIN: "support.local"
+      LDAP_BASE_DN: "dc=support,dc=local"
+      LDAP_ADMIN_PASSWORD: "Admin1234!"
+      LDAP_CONFIG_PASSWORD: "Admin1234!"
+      LDAP_READONLY_USER: "false"
+      LDAP_TLS: "false"
+      LDAP_TLS_VERIFY_CLIENT: "never"
+      LDAP_LOG_LEVEL: "256"
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+      - ./openldap/bootstrap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/bootstrap.ldif
+    ports:
+      - "389:389"
+    command: --copy-service
+
+  ldap-api:
+    build:
+      context: ./ldap-api
+      dockerfile: Dockerfile
+    container_name: helpdesk-ldap-api
+    depends_on:
+      - openldap
+      - postgres
+    ports:
+      - "5001:5000"
+    restart: unless-stopped
+
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    container_name: helpdesk-n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: helpdesk
+      DB_POSTGRESDB_USER: helpdesk
+      DB_POSTGRESDB_PASSWORD: helpdeskpass
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: admin
+      N8N_BASIC_AUTH_PASSWORD: admin1234
+      # ⚠️ Update WEBHOOK_URL with your ngrok URL before running
+      WEBHOOK_URL: https://YOUR_NGROK_URL
+      N8N_EDITOR_BASE_URL: https://YOUR_NGROK_URL
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: last
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_TASK_REQUEST_TIMEOUT: "120"
+      N8N_RUNNERS_MAX_CONCURRENCY: "5"
+      N8N_ENCRYPTION_KEY: helpdesk-secret-key-2026
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "5678:5678"
+    extra_hosts:
+      - "host-gateway:host-gateway"
+
+  frontend:
+    build:
+      context: ./helpdesk-frontend
+      dockerfile: Dockerfile
+    container_name: helpdesk-frontend
+    depends_on:
+      - ldap-api
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: helpdesk-mailhog
+    ports:
+      - "1025:1025"   # SMTP — ldap-api sends here
+      - "8025:8025"   # Web UI — view emails at http://localhost:8025
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  ldap_data:
+  ldap_config:
+  n8n_data:

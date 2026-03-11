@@ -1,0 +1,37 @@
+FROM alpine:3.22 AS tools
+RUN apk add --no-cache openldap-clients postgresql-client python3
+
+FROM n8nio/n8n:latest
+USER root
+
+# LDAP tools
+COPY --from=tools /usr/bin/ldapsearch  /usr/bin/ldapsearch
+COPY --from=tools /usr/bin/ldapmodify  /usr/bin/ldapmodify
+COPY --from=tools /usr/bin/ldapadd     /usr/bin/ldapadd
+COPY --from=tools /usr/bin/ldappasswd  /usr/bin/ldappasswd
+COPY --from=tools /usr/bin/ldapdelete  /usr/bin/ldapdelete
+COPY --from=tools /usr/bin/ldapwhoami  /usr/bin/ldapwhoami
+
+# LDAP shared libs
+COPY --from=tools /usr/lib/libldap.so.2          /usr/lib/libldap.so.2
+COPY --from=tools /usr/lib/libldap.so.2.0.200    /usr/lib/libldap.so.2.0.200
+COPY --from=tools /usr/lib/liblber.so.2          /usr/lib/liblber.so.2
+COPY --from=tools /usr/lib/liblber.so.2.0.200    /usr/lib/liblber.so.2.0.200
+COPY --from=tools /usr/lib/libsasl2.so.3         /usr/lib/libsasl2.so.3
+COPY --from=tools /usr/lib/libcrypto.so.3        /usr/lib/libcrypto.so.3
+COPY --from=tools /usr/lib/libssl.so.3           /usr/lib/libssl.so.3
+COPY --from=tools /usr/lib/libuuid.so.1          /usr/lib/libuuid.so.1
+
+# psql + libs
+COPY --from=tools /usr/bin/psql              /usr/bin/psql
+COPY --from=tools /usr/lib/libpq.so.5        /usr/lib/libpq.so.5
+COPY --from=tools /usr/lib/libpq.so.5.17     /usr/lib/libpq.so.5.17
+COPY --from=tools /usr/lib/libreadline.so.8  /usr/lib/libreadline.so.8
+
+# python3
+COPY --from=tools /usr/bin/python3                    /usr/bin/python3
+COPY --from=tools /usr/lib/python3.12                 /usr/lib/python3.12
+COPY --from=tools /usr/lib/libpython3.so              /usr/lib/libpython3.so
+COPY --from=tools /usr/lib/libpython3.12.so.1.0       /usr/lib/libpython3.12.so.1.0
+
+USER node

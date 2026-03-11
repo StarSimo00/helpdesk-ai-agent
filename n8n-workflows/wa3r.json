@@ -1,0 +1,299 @@
+{
+  "name": "Helpdesk AI Agent v7",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0ef607c9-7316-4ad2-bafd-d57d1e9f3221",
+      "name": "When chat message received",
+      "webhookId": "helpdesk-chat-v7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "HelpBot — Autonomous IT Level-1 Support Agent\nCRITICAL: Passing Inputs to Tools\n\nEvery tool receives a single plain string as input.\n\nDo not pass objects, JSON, or extra text — only the raw value.\n\nTools & Inputs:\n\nTool\tInput Example\tNotes\nlookup_user\tjdoe\tSearch OpenLDAP for a user. ALWAYS call before unlock or reset.\nunlock_account\tbjones\tUnlock a LOCKED account.\nreset_password\tjdoe\tResets password, returns temp password. Show in code block.\nsearch_kb\tvpn connection failed\tUse for Outlook, Teams, VPN, printer, MFA, Windows update issues.\nlog_action\t{\"action_type\":\"account_unlock\",\"target_user\":\"bjones\",\"details\":\"done\"}\tCall after every successful unlock or reset.\ncreate_jira_ticket\tBug: User cannot access Teams\tUse for N2 escalation (Bug + High) or access requests (Task + Medium).\nIDENTITY\n\nName: HelpBot\n\nRole: IT N1 Support Agent\n\nDECISION FLOW\n\nLocked account → lookup_user → if LOCKED: unlock_account → log_action → confirm to user\n\nPassword reset → lookup_user → reset_password → log_action → show temp password in code block\n\nSoftware/IT issues → search_kb → provide step-by-step instructions\n\nApplication/access request → create_jira_ticket → Task + Medium\n\nCannot resolve / critical bug → create_jira_ticket → Bug + High\n\nRULES / BEST PRACTICES\n\nAlways call lookup_user first before any write operation (unlock_account or reset_password).\n\nAsk one question at a time if user input is missing.\n\nDN handling: never try to manipulate dn in AI Agent. Always rely on server-side /lookup to provide the DN internally.\n\nPasswords: Always display temporary password in a code block.\n\nJira tickets: After creation, show the ticket key to the user.\n\nJIRA TICKETING INTEGRATION (n8n)\n\nUse your preconfigured Jira nodes in n8n:\n\nMap ticket type:\n\nBug → High → N2 Escalation\n\nTask → Medium → Access request\n\nPass the summary from AI message (e.g., \"Cannot access Teams\")\n\nInclude target_user in description for tracking\n\nReturn ticket key to AI Agent → show to user\n\nEXAMPLES OF TOOL CALLS\n\nUnlock:\n\nunlock_account: bjones\n\nPassword reset (show password in code block):\n\nreset_password: jdoe\n\nLog action:\n\nlog_action: {\"action_type\":\"password_reset\",\"target_user\":\"jdoe\",\"details\":\"temp password given\"}\n\nJira ticket creation:\n\ncreate_jira_ticket: Bug: User cannot access VPN",
+          "maxIterations": 15
+        }
+      },
+      "id": "3fb27c3c-8cfb-47a0-a4aa-7e5c926f7397",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        384,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen3-coder-next:cloud",
+        "options": {
+          "temperature": 0.1,
+          "numCtx": 4096
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        112,
+        224
+      ],
+      "id": "52993b89-e631-4fb0-a606-f2d74cb2119a",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "JLXCnXYp73VjkbNh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableName": "n8n_chat_memory",
+        "contextWindowLength": 20
+      },
+      "id": "a9cdc62b-a871-4a04-88f1-79d5206fa690",
+      "name": "Postgres Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        224
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "7piU5Nxia1eycFLZ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "search_kb",
+        "description": "Search IT knowledge base. Input: keywords (e.g. vpn connection failed).",
+        "jsCode": "const keywords = query.trim().toLowerCase();\nif (!keywords) return 'ERROR: keywords required';\nconst r = await $http({\n  method: 'GET',\n  url: 'http://helpdesk-ldap-api:5000/search-kb?q=' + encodeURIComponent(keywords)\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nif (!d.results || d.results.length === 0) return 'No KB article found for: ' + keywords + '. Consider escalating to N2.';\nreturn d.results.map(a => 'ARTICLE: ' + a.title + '\\n' + a.solution_text).join('\\n\\n');\n"
+      },
+      "id": "fc86ace0-1268-48b3-8b0e-f903e792a09a",
+      "name": "search_kb",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        1008,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "name": "log_action",
+        "description": "Log completed action. Input: JSON string with action_type and target_user.",
+        "jsCode": "let data;\ntry { data = JSON.parse(query); }\ncatch(e) { data = {action_type: 'agent_action', target_user: 'unknown', details: query}; }\nconst r = await $http({\n  method: 'POST',\n  url: 'http://helpdesk-ldap-api:5000/log-action',\n  headers: {'Content-Type': 'application/json'},\n  body: JSON.stringify(data)\n});\nconst d = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;\nreturn 'Logged: ID ' + (d.id || 'ok');\n"
+      },
+      "id": "b195b7c8-e8cc-4a8b-89d8-e360bd35aa26",
+      "name": "log_action",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ldap-api:5000/lookup",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"{{$fromAI('username')}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        224
+      ],
+      "id": "ac8126de-63be-4544-8835-fb45bfb20536",
+      "name": "lookup_user2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ldap-api:5000/unlock",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"{{$fromAI('username')}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        144
+      ],
+      "id": "8c3974fe-42d5-4522-9a2a-8c31699fca23",
+      "name": "unlock_account1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ldap-api:5000/reset-password",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"{{$fromAI('username')}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        736,
+        304
+      ],
+      "id": "da518e3b-4b0f-49bf-9a22-b2e75b1cc8fb",
+      "name": "reset_password1"
+    },
+    {
+      "parameters": {
+        "project": {
+          "__rl": true,
+          "value": "10035",
+          "mode": "list",
+          "cachedResultName": "n8n"
+        },
+        "issueType": {
+          "__rl": true,
+          "value": "10046",
+          "mode": "list",
+          "cachedResultName": "Tâche"
+        },
+        "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summary', ``, 'string') }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.jiraTool",
+      "typeVersion": 1,
+      "position": [
+        592,
+        352
+      ],
+      "id": "19d07826-bff7-4889-9fc4-7cd6337ef9c6",
+      "name": "Create an issue in Jira Software",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "bR153gpoRta2t5lE",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_kb": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "log_action": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "lookup_user2": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "unlock_account1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reset_password1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an issue in Jira Software": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "41e74524-98ff-459d-8151-a236e4d2b5c9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e932b66422adfb1da4f24d4282a707f522d5d6b964b1fc3fc338e52f04de44e1"
+  },
+  "id": "jWGOp6KJ15BnOuc0",
+  "tags": []
+}
