@@ -133,7 +133,7 @@ def ldap_login():
         server = ldap3.Server(LDAP_HOST, port=LDAP_PORT, use_ssl=False)
         # Step 1: admin bind to find user DN
         admin_conn = ldap3.Connection(server, user=LDAP_BIND, password=LDAP_PASS, auto_bind=True)
-        admin_conn.search(LDAP_BASE, f"(uid={username})", attributes=["dn"])
+        admin_conn.search(LDAP_BASE, f"(uid={username})", attributes=["uid"])
         if not admin_conn.entries:
             pg_log("LOGIN", username, "failure", "User not found in LDAP")
             return jsonify({"success": False, "error": "USER_NOT_FOUND"}), 404

@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir \
     flask \
     flask-cors \
     ldap3 \
-    psycopg2-binary
+    psycopg2-binary \
+    flasgger
 
 # Copy application
 COPY app.py /app/app.py
