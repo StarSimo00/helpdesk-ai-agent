@@ -314,6 +314,7 @@ def search_kb():
             (f"%{q}%", f"%{q}%", q)
         )
         rows = cur.fetchall(); conn.close()
+        pg_log("SEARCH_KB", "agent", "success", f"KB search: '{q}' → {len(rows)} results")
         return jsonify({"success": True, "data": {"results": [
             {"title": r[0], "category": r[1], "solution_text": r[2]} for r in rows
         ]}})
@@ -979,23 +980,24 @@ def send_otp():
         description: OTP sent
     """
     data      = request.json or {}
-    username  = data.get("username", "").strip().lower()
+    username  = data.get("username", "").strip().lower().split("@")[0]
     purpose   = data.get("purpose", "password_reset")   # password_reset | account_unlock
     if not username:
-        return jsonify({"success": False, "error": "username required"}), 400
+        return jsonify({"success": False, "error": "username required"})
     try:
         # Lookup user in LDAP to get real email
         conn = get_ldap()
         conn.search(LDAP_BASE, f"(uid={username})",
                     attributes=["uid", "displayName", "mail"])
         if not conn.entries:
-            return jsonify({"success": False, "error": "USER_NOT_FOUND"}), 404
+            return jsonify({"success": False, "error": "USER_NOT_FOUND",
+                            "message": "Username not found. Please verify and try again."})
         e            = conn.entries[0]
         display_name = str(e.displayName) if e.displayName else username
         email        = str(e.mail) if e.mail else None
         if not email:
             return jsonify({"success": False, "error": "NO_EMAIL_ON_FILE",
-                            "data": {"message": f"No email address found for {username} in the directory. Contact IT directly."}}), 404
+                            "message": f"No email address found for {username}. Contact IT directly."})
 
         # Generate 6-digit OTP
         otp      = str(random.randint(100000, 999999))
@@ -1073,14 +1075,14 @@ def verify_otp():
         description: OTP verified, action executed
     """
     data      = request.json or {}
-    username  = data.get("username",  "").strip().lower()
-    otp_input = data.get("otp",       "").strip()
-    purpose   = data.get("purpose",   "password_reset")
+    username  = data.get("username",  "").strip().lower().lstrip("=").split("@")[0]
+    otp_input = data.get("otp",       "").strip().lstrip("=")
+    purpose   = data.get("purpose",   "password_reset").strip().lstrip("=")
     ticket_id = data.get("ticket_id", "")
     session_id= data.get("session_id","")
 
     if not username or not otp_input:
-        return jsonify({"success": False, "error": "username and otp required"}), 400
+        return jsonify({"success": False, "error": "username and otp required"})
     try:
         pg_conn = get_pg(); cur = pg_conn.cursor()
         cur.execute(
@@ -1092,7 +1094,7 @@ def verify_otp():
         row = cur.fetchone()
         if not row:
             return jsonify({"success": False, "error": "OTP_NOT_FOUND",
-                            "data": {"message": "Aucun code actif trouvé. Demandez un nouveau code."}}), 404
+                            "message": "Aucun code actif trouvé. Demandez un nouveau code."})
 
         otp_id, otp_code, expires_at, used = row
 
@@ -1102,14 +1104,14 @@ def verify_otp():
             pg_conn.commit(); pg_conn.close()
             pg_log("VERIFY_OTP", username, "expired", f"OTP expired for {purpose}")
             return jsonify({"success": False, "error": "OTP_EXPIRED",
-                            "data": {"message": "Code expiré. Demandez un nouveau code."}}), 401
+                            "message": "Code expiré. Demandez un nouveau code."})
 
         # Check code
         if otp_input != otp_code:
             pg_log("VERIFY_OTP", username, "invalid", f"Wrong OTP attempt for {purpose}")
             pg_conn.close()
             return jsonify({"success": False, "error": "OTP_INVALID",
-                            "data": {"message": "Code incorrect. Vérifiez votre email et réessayez."}}), 401
+                            "message": "Code incorrect. Vérifiez votre email et réessayez."})
 
         # Mark used
         cur.execute("UPDATE otp_store SET used=true WHERE id=%s", (otp_id,))
@@ -1120,7 +1122,8 @@ def verify_otp():
         ldap_conn.search(LDAP_BASE, f"(uid={username})", attributes=["displayName", "mail", "description"])
         if not ldap_conn.entries:
             pg_conn.close()
-            return jsonify({"success": False, "error": "USER_NOT_FOUND"}), 404
+            return jsonify({"success": False, "error": "USER_NOT_FOUND",
+                            "message": "User not found in LDAP."})
 
         e           = ldap_conn.entries[0]
         user_dn     = str(e.entry_dn)
@@ -1177,6 +1180,115 @@ def verify_otp():
 
     except Exception as ex:
         return jsonify({"success": False, "error": str(ex)}), 500
+
+
+# ── Lookup by Email ───────────────────────────────────────────────────────────
+@app.route("/lookup-by-email", methods=["POST"])
+def lookup_by_email():
+    """
+    Find username by email — first step of guest identity verification
+    ---
+    tags: [OTP]
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            email: {type: string, example: jdoe@support.local}
+    responses:
+      200:
+        description: User found or not found (always 200)
+    """
+    data  = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"success": False, "error": "MISSING_FIELDS",
+                        "message": "email is required"})
+    try:
+        conn = get_ldap()
+        conn.search(LDAP_BASE, f"(mail={email})",
+                    attributes=["uid", "displayName", "mail"])
+        if not conn.entries:
+            return jsonify({"success": False, "error": "USER_NOT_FOUND",
+                            "message": "No account found with this email address. Please check and try again."})
+        entry  = conn.entries[0]
+        uid    = str(entry.uid).strip() if entry.uid else ""
+        parts  = email.split("@")
+        masked = parts[0][:2] + "***@" + parts[1] if len(parts) == 2 else "***"
+        return jsonify({"success": True, "data": {
+            "username":     uid,
+            "masked_email": masked,
+            "message":      "Account found. Please answer the security questions to verify your identity."
+        }})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+# ── Verify Identity (pre-OTP check) ──────────────────────────────────────────
+@app.route("/verify-identity", methods=["POST"])
+def verify_identity():
+    """
+    Verify guest identity — checks full name, department AND job title against LDAP
+    ---
+    tags: [OTP]
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            username: {type: string, example: jdoe}
+            full_name: {type: string, example: "John Doe"}
+            department: {type: string, example: IT}
+            title: {type: string, example: "IT Technician"}
+    responses:
+      200:
+        description: Identity verified or denied (always 200)
+    """
+    data       = request.get_json() or {}
+    username   = data.get("username", "").strip().lower().split("@")[0]
+    full_name  = data.get("full_name", "").strip().lower()
+    department = data.get("department", "").strip().lower()
+    title      = data.get("title", "").strip().lower()
+
+    if not username or not full_name or not department:
+        return jsonify({"success": False, "error": "MISSING_FIELDS",
+                        "message": "username, full_name and department are required"})
+    try:
+        conn = get_ldap()
+        conn.search(LDAP_BASE, f"(uid={username})",
+                    attributes=["displayName", "departmentNumber", "title", "mail"])
+        if not conn.entries:
+            return jsonify({"success": False, "error": "USER_NOT_FOUND",
+                            "message": "Username not found in the system."})
+
+        entry      = conn.entries[0]
+        ldap_name  = str(entry.displayName).strip().lower() if entry.displayName else ""
+        ldap_dept  = str(entry.departmentNumber).strip().lower() if entry.departmentNumber else ""
+        ldap_title = str(entry.title).strip().lower() if entry.title else ""
+        ldap_mail  = str(entry.mail).strip() if entry.mail else ""
+
+        name_ok  = full_name == ldap_name
+        dept_ok  = department == ldap_dept
+        title_ok = (not title) or (title == ldap_title)
+
+        if name_ok and dept_ok and title_ok:
+            parts  = ldap_mail.split("@")
+            masked = parts[0][:2] + "***@" + parts[1] if len(parts) == 2 else ""
+            return jsonify({"success": True, "verified": True,
+                            "username": username,
+                            "masked_email": masked,
+                            "message": "Identity verified successfully. Sending OTP now."})
+        else:
+            failed = []
+            if not name_ok:  failed.append("full name")
+            if not dept_ok:  failed.append("department")
+            if not title_ok: failed.append("job title")
+            return jsonify({"success": False, "verified": False,
+                            "error": "IDENTITY_MISMATCH",
+                            "message": f"The information provided does not match our records ({', '.join(failed)} incorrect). Access denied. Please contact IT directly."})
+
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
 
 
 if __name__ == "__main__":

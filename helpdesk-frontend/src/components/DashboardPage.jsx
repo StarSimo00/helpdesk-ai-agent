@@ -36,6 +36,11 @@ export default function DashboardPage({ user, onLogout }) {
 
   useEffect(() => { fetchAll() }, [])
 
+  useEffect(() => {
+    const interval = setInterval(() => { fetchAll() }, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   async function fetchAll() {
     setLoading(true)
     try {

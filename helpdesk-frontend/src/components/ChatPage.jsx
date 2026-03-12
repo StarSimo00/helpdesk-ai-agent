@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 
 const WEBHOOK = import.meta.env.VITE_N8N_WEBHOOK ||
-  'https://chang-unscriptural-unsusceptibly.ngrok-free.dev/webhook/3d36c40f-87bd-4a47-b3cc-fbba6576dd38'
+  `http://${window.location.hostname}:5678/webhook/3d36c40f-87bd-4a47-b3cc-fbba6576dd38`
 
 function greeting(user) {
   return user.isAnonymous

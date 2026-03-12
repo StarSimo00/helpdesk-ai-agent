@@ -70,8 +70,8 @@ services:
       N8N_BASIC_AUTH_USER: admin
       N8N_BASIC_AUTH_PASSWORD: admin1234
       # ⚠️ Update WEBHOOK_URL with your ngrok URL before running
-      WEBHOOK_URL: https://chang-unscriptural-unsusceptibly.ngrok-free.dev
-      N8N_EDITOR_BASE_URL: https://chang-unscriptural-unsusceptibly.ngrok-free.dev
+      WEBHOOK_URL: https://YOUR_NGROK_URL
+      N8N_EDITOR_BASE_URL: https://YOUR_NGROK_URL
       N8N_HOST: 0.0.0.0
       N8N_PORT: 5678
       N8N_PROTOCOL: https
@@ -99,6 +99,16 @@ services:
       - "3000:80"
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: helpdesk-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull qwen3-coder-next:cloud && wait"]
+
   mailhog:
     image: mailhog/mailhog:latest
     container_name: helpdesk-mailhog
@@ -112,3 +122,5 @@ volumes:
   ldap_data:
   ldap_config:
   n8n_data:
+  ollama_data:
+
