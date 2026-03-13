@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const LDAP_API = `http://${window.location.hostname}:5001`
+const LDAP_API = `${window.location.origin}/api`
 
 const ACTION_COLORS = {
   UNLOCK_ACCOUNT: '#8b5cf6',

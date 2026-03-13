@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const LDAP_API = `http://${window.location.hostname}:5001`
+const LDAP_API = `${window.location.origin}/api`
 
 export default function LoginPage({ onLogin }) {
   const [mode, setMode] = useState('landing')

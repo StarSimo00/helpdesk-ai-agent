@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 
 const WEBHOOK = import.meta.env.VITE_N8N_WEBHOOK ||
-  `http://${window.location.hostname}:5678/webhook/3d36c40f-87bd-4a47-b3cc-fbba6576dd38`
+  `${window.location.origin}/webhook/3d36c40f-87bd-4a47-b3cc-fbba6576dd38`
 
 function greeting(user) {
   return user.isAnonymous
@@ -42,7 +42,7 @@ export default function ChatPage({ user, onLogout }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatInput: t,
+          message: t,
           sessionId: user.sessionId,
           user: { username: user.username, displayName: user.displayName, department: user.department, isAnonymous: user.isAnonymous },
         }),
