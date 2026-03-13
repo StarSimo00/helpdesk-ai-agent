@@ -98,6 +98,15 @@ services:
       - "3000:80"
     restart: unless-stopped
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: helpdesk-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
   ollama:
     image: ollama/ollama:latest
     container_name: helpdesk-ollama
@@ -121,5 +130,6 @@ volumes:
   ldap_data:
   ldap_config:
   n8n_data:
+  qdrant_data:
   ollama_data:
 

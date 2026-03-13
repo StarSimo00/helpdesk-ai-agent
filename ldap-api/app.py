@@ -1,19 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flasgger import Swagger, swag_from
-import ldap3
-import random
-import string
-import psycopg2
-import psycopg2.extras
-import datetime
-import subprocess
-import socket
-import os
-import smtplib
-import random
+from flasgger import Swagger
+import ldap3, random, string, psycopg2, psycopg2.extras
+import datetime, subprocess, socket, os, smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct
 
 app = Flask(__name__)
 
@@ -285,11 +278,11 @@ def reset_password():
         pg_log("RESET_PASSWORD", username, "failure", str(ex), ticket_id, session_id)
         return jsonify({"success": False, "error": str(ex)}), 500
 
-# ── Search KB ─────────────────────────────────────────────────────────────────
+# ── Search KB (RAG — Qdrant vector search) ────────────────────────────────────
 @app.route("/search-kb", methods=["GET"])
 def search_kb():
     """
-    Search knowledge base articles
+    Search KB using semantic vector search (RAG)
     ---
     tags: [Knowledge Base]
     parameters:
@@ -305,21 +298,34 @@ def search_kb():
     if not q:
         return jsonify({"success": True, "data": {"results": []}})
     try:
-        conn = get_pg()
-        cur  = conn.cursor()
-        cur.execute(
-            "SELECT title, category, solution_text FROM knowledge_base "
-            "WHERE is_active = true AND (title ILIKE %s OR solution_text ILIKE %s OR %s = ANY(keywords)) "
-            "ORDER BY confidence_boost DESC LIMIT 3",
-            (f"%{q}%", f"%{q}%", q)
-        )
-        rows = cur.fetchall(); conn.close()
-        pg_log("SEARCH_KB", "agent", "success", f"KB search: '{q}' → {len(rows)} results")
-        return jsonify({"success": True, "data": {"results": [
-            {"title": r[0], "category": r[1], "solution_text": r[2]} for r in rows
-        ]}})
+        vector  = list(get_embedder().embed([q]))[0].tolist()
+        hits    = get_qdrant().query_points(
+            collection_name=KB_COLLECTION,
+            query=vector,
+            limit=3,
+            score_threshold=0.3
+        ).points
+        results = [{"title": h.payload["title"], "category": h.payload["category"],
+                    "solution_text": h.payload["solution_text"], "score": round(h.score, 3)}
+                   for h in hits]
+        pg_log("SEARCH_KB", "agent", "success", f"RAG search: '{q}' → {len(results)} results")
+        return jsonify({"success": True, "data": {"results": results}})
     except Exception as ex:
-        return jsonify({"success": False, "error": str(ex)}), 500
+        # Fallback to SQL if Qdrant not ready
+        try:
+            conn = get_pg(); cur = conn.cursor()
+            cur.execute(
+                "SELECT title, category, solution_text FROM knowledge_base "
+                "WHERE is_active=true AND (title ILIKE %s OR solution_text ILIKE %s) "
+                "ORDER BY confidence_boost DESC LIMIT 3",
+                (f"%{q}%", f"%{q}%")
+            )
+            rows = cur.fetchall(); conn.close()
+            return jsonify({"success": True, "data": {"results": [
+                {"title": r[0], "category": r[1], "solution_text": r[2]} for r in rows
+            ]}})
+        except Exception as ex2:
+            return jsonify({"success": False, "error": str(ex2)})
 
 # ── Log Action ────────────────────────────────────────────────────────────────
 @app.route("/log-action", methods=["POST"])
