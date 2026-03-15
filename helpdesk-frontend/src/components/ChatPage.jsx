@@ -10,12 +10,65 @@ function greeting(user) {
     : `Hello **${user.displayName}**! I'm **HelpBot**.\n\nI can help you with:\n- 🔓 Unlocking accounts\n- 🔑 Password resets\n- 🛠 Technical issues (VPN, Outlook, Teams)\n- 🎫 Support tickets\n\nWhat can I do for you?`
 }
 
+// Generate a new session ID
+function newSessionId(username) {
+  const ts  = Date.now().toString(36)
+  const rnd = Math.random().toString(36).slice(2, 7)
+  return `${username}-${ts}-${rnd}`
+}
+
 export default function ChatPage({ user, onLogout }) {
   const navigate = useNavigate()
+
+  // Session management — new session on every login
+  const [sessionId] = useState(() => {
+    if (user.isAnonymous) return newSessionId('guest')
+    const sid = newSessionId(user.username)
+    return sid
+  })
+
   const [msgs, setMsgs] = useState(() => [{ id: 1, role: 'bot', text: greeting(user) }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebar, setSidebar] = useState(false)
+  const [conversations, setConversations] = useState([])
+  const [loadingConvo, setLoadingConvo] = useState(false)
+
+  // Load past conversations for logged-in users
+  useEffect(() => {
+    if (!user.isAnonymous && user.username) {
+      fetch(`${window.location.origin}/api/conversations/${user.username}`)
+        .then(r => r.json())
+        .then(d => { if (d.success) setConversations(d.data.conversations) })
+        .catch(() => {})
+    }
+  }, [user])
+
+  // Load a past conversation
+  async function loadConversation(sid) {
+    setLoadingConvo(true)
+    try {
+      const res = await fetch(`${window.location.origin}/api/conversation/${encodeURIComponent(sid)}`)
+      const data = await res.json()
+      if (data.success && data.data.messages.length > 0) {
+        const loaded = data.data.messages.map((m, i) => ({
+          id: i + 1,
+          role: m.role === 'ai' ? 'bot' : 'user',
+          text: m.content,
+          ts: m.ts
+        }))
+        setMsgs(loaded)
+        setSidebar(false)
+      }
+    } catch {}
+    setLoadingConvo(false)
+  }
+
+  // New conversation
+  function startNewConversation() {
+    setMsgs([{ id: 1, role: 'bot', text: greeting(user) }])
+    setSidebar(false)
+  }
   const bottomRef = useRef(null)
   const taRef = useRef(null)
 
@@ -43,7 +96,7 @@ export default function ChatPage({ user, onLogout }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: t,
-          sessionId: user.sessionId,
+          sessionId: sessionId,
           user: { username: user.username, displayName: user.displayName, department: user.department, isAnonymous: user.isAnonymous },
         }),
       })
@@ -115,8 +168,32 @@ export default function ChatPage({ user, onLogout }) {
           ))}
         </div>
 
+        {!user.isAnonymous && (
+          <div style={s.sbSect}>
+            <button style={s.newConvoBtn} onClick={startNewConversation}>
+              ✏️ New Conversation
+            </button>
+          </div>
+        )}
+
+        {!user.isAnonymous && conversations.length > 0 && (
+          <div style={{...s.sbSect, flex:1, overflowY:'auto'}}>
+            <div style={s.sbLabel}>Recent Conversations</div>
+            {loadingConvo && <div style={{color:'var(--text-3)',fontSize:12,padding:'8px 0'}}>Loading...</div>}
+            {conversations.map((c, i) => (
+              <div key={i} style={s.histItem} onClick={() => loadConversation(c.session_id)}>
+                <div style={s.histTitle}>{new Date(c.last_message_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'})}</div>
+                <div style={s.histSub}>
+                  <span style={{fontFamily:'var(--font-mono)',fontSize:10}}>{c.message_count} messages</span>
+                </div>
+                {c.preview && <div style={s.histSummary}>{c.preview}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={s.sbFoot}>
-          {!user.isAnonymous && (
+          {!user.isAnonymous && user.department === 'IT' && (
             <button style={s.dashBtn} onClick={() => navigate('/dashboard')}>
               <DashIcon /> Dashboard
             </button>
@@ -276,6 +353,12 @@ const s = {
   overlay: { position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:90, backdropFilter:'blur(3px)' },
 
   // Sidebar
+  newConvoBtn: { width:'100%', background:'rgba(139,92,246,0.12)', border:'1px solid var(--border-2)', borderRadius:8, color:'var(--purple-bright)', fontSize:13, padding:'10px 14px', cursor:'pointer', fontFamily:'var(--font-ui)', textAlign:'left', fontWeight:600 },
+  histItem: { background:'rgba(139,92,246,0.06)', border:'1px solid var(--border-1)', borderRadius:8, padding:'8px 10px', marginBottom:6, cursor:'default' },
+  histTitle: { fontSize:12, fontWeight:600, color:'var(--text-1)', marginBottom:2 },
+  histSub: { fontSize:10, color:'var(--text-3)', fontFamily:'var(--font-mono)', marginBottom:3, display:'flex', gap:6, alignItems:'center' },
+  histTicket: { background:'rgba(139,92,246,0.15)', color:'var(--purple-bright)', borderRadius:4, padding:'1px 5px', fontSize:10 },
+  histSummary: { fontSize:10, color:'var(--text-3)', lineHeight:1.4 },
   sidebar: {
     position: 'fixed', left:0, top:0, bottom:0, width:272,
     background: 'rgba(9,7,20,0.97)', borderRight:'1px solid var(--border-1)',

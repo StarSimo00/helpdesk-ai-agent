@@ -1297,5 +1297,231 @@ def verify_identity():
         return jsonify({"success": False, "error": str(ex)})
 
 
+# ── Escalation N1→N2 ──────────────────────────────────────────────────────────
+@app.route("/escalate", methods=["POST"])
+def escalate():
+    """
+    Escalate a ticket from N1 to N2 with full context
+    ---
+    tags: [Escalation]
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            ticket_id: {type: string, example: PROJ-42}
+            username: {type: string}
+            display_name: {type: string}
+            department: {type: string}
+            issue_type: {type: string}
+            priority: {type: string, example: high}
+            summary: {type: string}
+            steps_tried: {type: string}
+            error_details: {type: string}
+            session_id: {type: string}
+    responses:
+      200:
+        description: Escalation created
+    """
+    d            = request.json or {}
+    ticket_id    = d.get("ticket_id", "")
+    username     = d.get("username", "unknown")
+    display_name = d.get("display_name", username)
+    department   = d.get("department", "")
+    issue_type   = d.get("issue_type", "General")
+    priority     = d.get("priority", "medium")
+    summary      = d.get("summary", "")
+    steps_tried  = d.get("steps_tried", "")
+    error_details= d.get("error_details", "")
+    session_id   = d.get("session_id", "")
+    try:
+        conn = get_pg(); cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO escalations
+              (ticket_id, username, display_name, department, issue_type,
+               priority, summary, steps_tried, error_details, session_id, status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'open') RETURNING id
+        """, (ticket_id, username, display_name, department, issue_type,
+              priority, summary, steps_tried, error_details, session_id))
+        esc_id = cur.fetchone()[0]
+        conn.commit(); conn.close()
+        pg_log("ESCALATION", username, "escalated",
+               f"Ticket {ticket_id} escalated to N2 — {issue_type}", ticket_id, session_id)
+        # Send email to N2
+        send_email(
+            "it-support-n2@support.local",
+            f"[N2 ESCALATION] {ticket_id} — {issue_type} — {priority.upper()}",
+            f"""<div style="font-family:Arial,sans-serif;max-width:600px;padding:20px;">
+                <h2 style="color:#dc2626;">🚨 N2 Escalation Required</h2>
+                <table style="width:100%;border-collapse:collapse;">
+                  <tr><td style="padding:8px;font-weight:bold;">Ticket</td><td>{ticket_id}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">User</td><td>{display_name} ({username})</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">Department</td><td>{department}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">Issue Type</td><td>{issue_type}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">Priority</td><td style="color:#dc2626;">{priority.upper()}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">Summary</td><td>{summary}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">Steps Tried</td><td>{steps_tried}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;">Error Details</td><td>{error_details}</td></tr>
+                </table>
+                <p style="margin-top:20px;color:#6b7280;">View in dashboard: http://localhost:3000/dashboard</p>
+            </div>""",
+            f"N2 Escalation: {ticket_id} — {issue_type}\nUser: {username}\nPriority: {priority}\nSummary: {summary}\nSteps tried: {steps_tried}"
+        )
+        return jsonify({"success": True, "escalation_id": esc_id,
+                        "message": f"Ticket {ticket_id} escalated to N2. The team has been notified."})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+@app.route("/escalations", methods=["GET"])
+def list_escalations():
+    """Get all escalations for N2 dashboard ---
+    tags: [Escalation]
+    responses:
+      200:
+        description: List of escalations
+    """
+    try:
+        conn = get_pg(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM escalations ORDER BY created_at DESC")
+        rows = cur.fetchall(); conn.close()
+        return jsonify({"success": True, "data": {"escalations": [dict(r) for r in rows]}})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+@app.route("/escalation/<int:esc_id>", methods=["PATCH"])
+def update_escalation(esc_id):
+    """Update escalation status ---
+    tags: [Escalation]
+    responses:
+      200:
+        description: Updated
+    """
+    d      = request.json or {}
+    status = d.get("status", "in_progress")
+    notes  = d.get("notes", "")
+    try:
+        conn = get_pg(); cur = conn.cursor()
+        cur.execute("UPDATE escalations SET status=%s, n2_notes=%s, updated_at=NOW() WHERE id=%s",
+                    (status, notes, esc_id))
+        conn.commit(); conn.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+# ── Chat History ───────────────────────────────────────────────────────────────
+@app.route("/chat-history", methods=["POST"])
+def save_chat_history():
+    """Save conversation summary ---
+    tags: [Chat]
+    responses:
+      200:
+        description: Saved
+    """
+    d          = request.json or {}
+    username   = d.get("username", "")
+    session_id = d.get("session_id", "")
+    summary    = d.get("summary", "")
+    ticket_id  = d.get("ticket_id", "")
+    issue_type = d.get("issue_type", "")
+    if not username or not session_id:
+        return jsonify({"success": False, "error": "username and session_id required"})
+    try:
+        conn = get_pg(); cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chat_history (username, session_id, summary, ticket_id, issue_type)
+            VALUES (%s,%s,%s,%s,%s)
+            ON CONFLICT (session_id) DO UPDATE
+            SET summary=%s, ticket_id=%s, issue_type=%s, updated_at=NOW()
+        """, (username, session_id, summary, ticket_id, issue_type,
+              summary, ticket_id, issue_type))
+        conn.commit(); conn.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+@app.route("/chat-history/<username>", methods=["GET"])
+def get_chat_history(username):
+    """Get chat history for a user ---
+    tags: [Chat]
+    responses:
+      200:
+        description: Chat history
+    """
+    try:
+        conn = get_pg(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT session_id, summary, ticket_id, issue_type, created_at, updated_at
+            FROM chat_history WHERE username=%s
+            ORDER BY updated_at DESC LIMIT 20
+        """, (username,))
+        rows = cur.fetchall(); conn.close()
+        return jsonify({"success": True, "data": {"history": [dict(r) for r in rows]}})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+
+# ── Conversations ─────────────────────────────────────────────────────────────
+@app.route("/conversations/<username>", methods=["GET"])
+def get_conversations(username):
+    import re, json as _json
+    if not username or username.startswith("guest"):
+        return jsonify({"success": True, "data": {"conversations": []}})
+    try:
+        conn = get_pg()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT session_id, MIN(created_at) as started_at,
+                   MAX(created_at) as last_message_at, COUNT(*) as message_count,
+                   (SELECT message->>'content' FROM n8n_chat_memory m2
+                    WHERE m2.session_id = m.session_id AND message->>'type' = 'ai'
+                    ORDER BY created_at ASC LIMIT 1) as first_ai_message
+            FROM n8n_chat_memory m
+            WHERE session_id ILIKE %s AND session_id NOT ILIKE 'guest%%'
+            GROUP BY session_id ORDER BY last_message_at DESC LIMIT 10
+        """, (f"%{username}%",))
+        rows = cur.fetchall(); conn.close()
+        convos = []
+        for r in rows:
+            preview = re.sub(r"[*#`]", "", r["first_ai_message"] or "")[:80]
+            convos.append({"session_id": r["session_id"], "started_at": str(r["started_at"]),
+                           "last_message_at": str(r["last_message_at"]),
+                           "message_count": r["message_count"], "preview": preview})
+        return jsonify({"success": True, "data": {"conversations": convos}})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+@app.route("/conversation/<path:session_id>", methods=["GET"])
+def get_conversation(session_id):
+    import re, json as _json
+    try:
+        conn = get_pg()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT message, created_at FROM n8n_chat_memory WHERE session_id=%s ORDER BY created_at ASC",
+                    (session_id,))
+        rows = cur.fetchall(); conn.close()
+        messages = []
+        for r in rows:
+            msg = r["message"]
+            if isinstance(msg, str):
+                try: msg = _json.loads(msg)
+                except: continue
+            mtype   = msg.get("type", "")
+            content = msg.get("content", "")
+            if mtype == "ai":
+                messages.append({"role": "ai", "content": content, "ts": str(r["created_at"])})
+            elif mtype == "human":
+                content = content.split("=== USER MESSAGE ===")[-1].strip() if "=== USER MESSAGE ===" in content else content
+                if content:
+                    messages.append({"role": "human", "content": content, "ts": str(r["created_at"])})
+        return jsonify({"success": True, "data": {"messages": messages}})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

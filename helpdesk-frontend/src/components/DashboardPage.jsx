@@ -29,6 +29,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [stats, setStats] = useState(null)
   const [logs, setLogs] = useState([])
   const [accessReqs, setAccessReqs] = useState([])
+  const [escalations, setEscalations] = useState([])
   const [loading, setLoading] = useState(true)
   const [logsFilter, setLogsFilter] = useState({ username: '', action_type: '', ticket_id: '' })
   const [logsPage, setLogsPage] = useState(0)
@@ -44,14 +45,16 @@ export default function DashboardPage({ user, onLogout }) {
   async function fetchAll() {
     setLoading(true)
     try {
-      const [s, l, a] = await Promise.all([
+      const [s, l, a, e] = await Promise.all([
         fetch(`${LDAP_API}/dashboard/stats`).then(r => r.json()),
         fetch(`${LDAP_API}/logs?limit=200`).then(r => r.json()),
         fetch(`${LDAP_API}/access-requests`).then(r => r.json()),
+        fetch(`${LDAP_API}/escalations`).then(r => r.json()),
       ])
       if (s.success) setStats(s.data)
       if (l.success) setLogs(l.data.logs)
       if (a.success) setAccessReqs(a.data.requests)
+      if (e.success) setEscalations(e.data.escalations)
     } catch {}
     setLoading(false)
   }
@@ -95,6 +98,7 @@ export default function DashboardPage({ user, onLogout }) {
             { id: 'overview', icon: <GridIcon />, label: 'Overview' },
             { id: 'logs', icon: <LogIcon />, label: 'Action Logs' },
             { id: 'access', icon: <KeyIcon />, label: 'Access Requests' },
+            { id: 'escalations', icon: <EscIcon />, label: 'N2 Escalations' },
           ].map(item => (
             <button key={item.id} style={{ ...s.navBtn, ...(tab === item.id ? s.navActive : {}) }}
               onClick={() => setTab(item.id)}>
@@ -147,6 +151,7 @@ export default function DashboardPage({ user, onLogout }) {
                 <KpiCard label="Temps Moyen Traitement" value={stats.avg_resolution_display || '—'} icon="⏱" color="#22d3ee" />
                 <KpiCard label="Répartition KB" value={stats.kb_searches} icon="📚" color="#60a5fa" />
                 <KpiCard label="Demandes Accès" value={accessReqs.length} icon="🔑" color="#f59e0b" />
+                <KpiCard label="Escalations N2" value={escalations.filter(e=>e.status==='open').length} icon="🚨" color="#ef4444" />
                 <KpiCard
                   label="Satisfaction Utilisateur"
                   value={stats.satisfaction_score ? `${stats.satisfaction_score}/5` : '—'}
@@ -235,6 +240,54 @@ export default function DashboardPage({ user, onLogout }) {
                 <button style={s.pageBtn} disabled={logsPage === 0} onClick={() => setLogsPage(p => p - 1)}>← Prev</button>
                 <span style={s.pageInfo}>Page {logsPage + 1}</span>
                 <button style={s.pageBtn} disabled={logs.length < LOGS_PER_PAGE} onClick={() => setLogsPage(p => p + 1)}>Next →</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── ESCALATIONS ── */}
+          {!loading && tab === 'escalations' && (
+            <div style={s.card}>
+              <div style={s.cardTitle}>N2 Escalations ({escalations.length})</div>
+              {escalations.length === 0 && <div style={s.empty}>No escalations yet</div>}
+              <div style={s.tableWrap}>
+                <table style={s.table}>
+                  <thead>
+                    <tr>{['ID','Ticket','User','Dept','Issue','Priority','Summary','Steps Tried','Status','Created','Actions'].map(h=>(
+                      <th key={h} style={s.th}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {escalations.map((e,i)=>(
+                      <tr key={i} style={s.tr}>
+                        <td style={s.td}>#{e.id}</td>
+                        <td style={s.td}><span style={s.ticketTag}>{e.ticket_id||'—'}</span></td>
+                        <td style={s.td}>{e.display_name||e.username}</td>
+                        <td style={s.td}>{e.department}</td>
+                        <td style={s.td}>{e.issue_type}</td>
+                        <td style={s.td}><span style={{color: e.priority==='critical'?'#ef4444':e.priority==='high'?'#f59e0b':'#4ade80', fontWeight:700, textTransform:'uppercase', fontSize:11}}>{e.priority}</span></td>
+                        <td style={{...s.td, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{e.summary}</td>
+                        <td style={{...s.td, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{e.steps_tried}</td>
+                        <td style={s.td}><StatusBadge status={e.status}/></td>
+                        <td style={{...s.td, fontSize:10, fontFamily:'var(--font-mono)'}}>{new Date(e.created_at).toLocaleString()}</td>
+                        <td style={s.td}>
+                          {e.status==='open' && (
+                            <div style={{display:'flex',gap:4}}>
+                              <button style={s.approveBtn} onClick={async()=>{
+                                await fetch(`${LDAP_API}/escalation/${e.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'in_progress'})})
+                                fetchAll()
+                              }}>▶ Take</button>
+                              <button style={s.provisionBtn} onClick={async()=>{
+                                await fetch(`${LDAP_API}/escalation/${e.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'resolved'})})
+                                fetchAll()
+                              }}>✓ Done</button>
+                            </div>
+                          )}
+                          {e.status!=='open' && <span style={{color:'var(--text-3)',fontSize:11}}>{e.status}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -358,6 +411,7 @@ const GridIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="non
 const LogIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
 const KeyIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3"/></svg>
 const ChatIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+const EscIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
 const LogoutIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
 
 // ── Styles ─────────────────────────────────────────────────────────────────────

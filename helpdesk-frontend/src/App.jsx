@@ -57,7 +57,9 @@ export default function App() {
           user ? <ChatPage user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
         } />
         <Route path="/dashboard" element={
-          user ? <DashboardPage user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+          user && !user.isAnonymous && user.department === 'IT'
+            ? <DashboardPage user={user} onLogout={handleLogout} />
+            : <Navigate to="/chat" replace />
         } />
         <Route path="*" element={<Navigate to={user ? "/chat" : "/login"} replace />} />
       </Routes>
