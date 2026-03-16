@@ -20,12 +20,12 @@ function newSessionId(username) {
 export default function ChatPage({ user, onLogout }) {
   const navigate = useNavigate()
 
-  // Session management — new session on every login
-  const [sessionId] = useState(() => {
+  // Session management
+  const [activeSessionId, setActiveSessionId] = useState(() => {
     if (user.isAnonymous) return newSessionId('guest')
-    const sid = newSessionId(user.username)
-    return sid
+    return newSessionId(user.username)
   })
+  const [ticketDbId, setTicketDbId] = useState(null)
 
   const [msgs, setMsgs] = useState(() => [{ id: 1, role: 'bot', text: greeting(user) }])
   const [input, setInput] = useState('')
@@ -44,7 +44,7 @@ export default function ChatPage({ user, onLogout }) {
     }
   }, [user])
 
-  // Load a past conversation
+  // Load a past conversation and resume it
   async function loadConversation(sid) {
     setLoadingConvo(true)
     try {
@@ -58,6 +58,7 @@ export default function ChatPage({ user, onLogout }) {
           ts: m.ts
         }))
         setMsgs(loaded)
+        setActiveSessionId(sid)  // resume this session
         setSidebar(false)
       }
     } catch {}
@@ -67,7 +68,18 @@ export default function ChatPage({ user, onLogout }) {
   // New conversation
   function startNewConversation() {
     setMsgs([{ id: 1, role: 'bot', text: greeting(user) }])
+    setActiveSessionId(newSessionId(user.isAnonymous ? 'guest' : user.username))
+    setTicketDbId(null)
     setSidebar(false)
+    // Refresh conversation list
+    if (!user.isAnonymous && user.username) {
+      setTimeout(() => {
+        fetch(`${window.location.origin}/api/conversations/${user.username}`)
+          .then(r => r.json())
+          .then(d => { if (d.success) setConversations(d.data.conversations) })
+          .catch(() => {})
+      }, 2000)
+    }
   }
   const bottomRef = useRef(null)
   const taRef = useRef(null)
@@ -90,13 +102,39 @@ export default function ChatPage({ user, onLogout }) {
     setMsgs(p => [...p, { id, role: 'user', text: t }])
     setInput('')
     setLoading(true)
+
+    // Auto-create DB ticket on first message for authenticated users
+    let currentTicketDbId = ticketDbId
+    if (!user.isAnonymous && !ticketDbId && msgs.length === 1) {
+      try {
+        const tr = await fetch(`${window.location.origin}/api/tickets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: user.username,
+            department: user.department || '',
+            issue_type: 'Pending',
+            priority: 'medium',
+            summary: t.slice(0, 200),
+            session_id: activeSessionId
+          })
+        })
+        const td = await tr.json()
+        if (td.success) {
+          currentTicketDbId = td.data.ticket_db_id
+          setTicketDbId(currentTicketDbId)
+        }
+      } catch {}
+    }
+
     try {
       const res = await fetch(WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: t,
-          sessionId: sessionId,
+          sessionId: activeSessionId,
+          ticket_db_id: currentTicketDbId,
           user: { username: user.username, displayName: user.displayName, department: user.department, isAnonymous: user.isAnonymous },
         }),
       })
@@ -115,7 +153,7 @@ export default function ChatPage({ user, onLogout }) {
       setLoading(false)
       setTimeout(() => taRef.current?.focus(), 50)
     }
-  }, [loading, user])
+  }, [loading, user, activeSessionId, ticketDbId, msgs.length])
 
   function onKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) }
@@ -155,17 +193,8 @@ export default function ChatPage({ user, onLogout }) {
         </div>
 
         <div style={s.sbSect}>
-          <div style={s.sbLabel}>Session</div>
-          <div style={s.sbSession}>{user.sessionId}</div>
-        </div>
-
-        <div style={s.sbSect}>
-          <div style={s.sbLabel}>Quick Actions</div>
-          {quick.map((q, i) => (
-            <button key={i} style={s.sbQuick} onClick={() => { send(q.label); setSidebar(false) }}>
-              <span>{q.icon}</span><span>{q.label}</span>
-            </button>
-          ))}
+          <div style={s.sbLabel}>Session ID</div>
+          <div style={s.sbSession}>{activeSessionId.slice(-12)}</div>
         </div>
 
         {!user.isAnonymous && (
@@ -275,72 +304,6 @@ export default function ChatPage({ user, onLogout }) {
 
 // ── Bubble ────────────────────────────────────────────────────
 
-function Bubble({ msg, user }) {
-  const isUser = msg.role === 'user'
-
-  function render(text) {
-    return text.split(/(```[\s\S]*?```)/g).map((seg, i) => {
-      if (seg.startsWith('```')) {
-        const code = seg.replace(/^```\w*\n?/, '').replace(/\n?```$/, '')
-        return <div key={i} style={s.codeWrap}><pre style={s.code}>{code}</pre></div>
-      }
-      return seg.split('\n').map((line, j, arr) => (
-        <span key={`${i}-${j}`}>
-          {line.split(/(\*\*[^*]+\*\*)/g).map((p, k) =>
-            p.startsWith('**') && p.endsWith('**')
-              ? <strong key={k}>{p.slice(2, -2)}</strong> : p
-          )}
-          {j < arr.length - 1 && <br />}
-        </span>
-      ))
-    })
-  }
-
-  return (
-    <div style={{ ...s.row, justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-      {!isUser && <div style={s.botAv}><Hex size={15} /></div>}
-      <div style={{ ...s.bubble, ...(isUser ? s.uBubble : s.bBubble), ...(msg.err ? s.errBubble : {}) }}>
-        {render(msg.text)}
-        <div style={{ ...s.time, textAlign: isUser ? 'right' : 'left' }}>
-          {new Date(msg.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      </div>
-      {isUser && (
-        <div style={s.userAv}>
-          {user.isAnonymous ? '?' : user.displayName.charAt(0).toUpperCase()}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Typing() {
-  return (
-    <div style={{ ...s.row, justifyContent: 'flex-start' }}>
-      <div style={s.botAv}><Hex size={15} /></div>
-      <div style={{ ...s.bubble, ...s.bBubble, padding: '14px 16px' }}>
-        <div style={{ display:'flex', gap:5, alignItems:'center' }}>
-          {[0,150,300].map(d => <span key={d} style={{ width:7, height:7, borderRadius:'50%', background:'var(--purple-mid)', display:'inline-block', animation:`blink 1.2s ${d}ms ease-in-out infinite` }} />)}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Icons ─────────────────────────────────────────────────────
-const Hex = ({ size = 28 }) => (
-  <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
-    <polygon points="18,2 32,10 32,26 18,34 4,26 4,10" fill="rgba(139,92,246,0.15)" stroke="#8b5cf6" strokeWidth="1.5"/>
-    <circle cx="18" cy="18" r="7" fill="#8b5cf6"/>
-    <circle cx="18" cy="18" r="3" fill="#f0ecff"/>
-  </svg>
-)
-const MenuIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-const SendIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-const DashIcon = () => <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2'><rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/></svg>
-const LogoutIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-
-// ── Styles ────────────────────────────────────────────────────
 const s = {
   shell: {
     display: 'flex',
@@ -445,3 +408,70 @@ const s = {
   hint: { fontSize:10, color:'var(--text-4)', fontFamily:'var(--font-mono)', textAlign:'center', marginTop:6 },
   kbd: { background:'var(--bg-elevated)', border:'1px solid var(--border-1)', borderRadius:3, padding:'1px 5px', fontSize:9 },
 }
+
+function Bubble({ msg, user }) {
+  const isUser = msg.role === 'user'
+
+  function render(text) {
+    return text.split(/(```[\s\S]*?```)/g).map((seg, i) => {
+      if (seg.startsWith('```')) {
+        const code = seg.replace(/^```\w*\n?/, '').replace(/\n?```$/, '')
+        return <div key={i} style={s.codeWrap}><pre style={s.code}>{code}</pre></div>
+      }
+      return seg.split('\n').map((line, j, arr) => (
+        <span key={`${i}-${j}`}>
+          {line.split(/(\*\*[^*]+\*\*)/g).map((p, k) =>
+            p.startsWith('**') && p.endsWith('**')
+              ? <strong key={k}>{p.slice(2, -2)}</strong> : p
+          )}
+          {j < arr.length - 1 && <br />}
+        </span>
+      ))
+    })
+  }
+
+  return (
+    <div style={{ ...s.row, justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+      {!isUser && <div style={s.botAv}><Hex size={15} /></div>}
+      <div style={{ ...s.bubble, ...(isUser ? s.uBubble : s.bBubble), ...(msg.err ? s.errBubble : {}) }}>
+        {render(msg.text)}
+        <div style={{ ...s.time, textAlign: isUser ? 'right' : 'left' }}>
+          {new Date(msg.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
+      {isUser && (
+        <div style={s.userAv}>
+          {user.isAnonymous ? '?' : user.displayName.charAt(0).toUpperCase()}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Typing() {
+  return (
+    <div style={{ ...s.row, justifyContent: 'flex-start' }}>
+      <div style={s.botAv}><Hex size={15} /></div>
+      <div style={{ ...s.bubble, ...s.bBubble, padding: '14px 16px' }}>
+        <div style={{ display:'flex', gap:5, alignItems:'center' }}>
+          {[0,150,300].map(d => <span key={d} style={{ width:7, height:7, borderRadius:'50%', background:'var(--purple-mid)', display:'inline-block', animation:`blink 1.2s ${d}ms ease-in-out infinite` }} />)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Icons ─────────────────────────────────────────────────────
+const Hex = ({ size = 28 }) => (
+  <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <polygon points="18,2 32,10 32,26 18,34 4,26 4,10" fill="rgba(139,92,246,0.15)" stroke="#8b5cf6" strokeWidth="1.5"/>
+    <circle cx="18" cy="18" r="7" fill="#8b5cf6"/>
+    <circle cx="18" cy="18" r="3" fill="#f0ecff"/>
+  </svg>
+)
+const MenuIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+const SendIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+const DashIcon = () => <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2'><rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/></svg>
+const LogoutIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+
+// ── Styles ────────────────────────────────────────────────────

@@ -36,6 +36,27 @@ swagger_template = {
 Swagger(app, config=swagger_config, template=swagger_template)
 CORS(app)
 
+# Strip leading = from all string values in request JSON (n8n expression artifact)
+def strip_equals(obj):
+    if isinstance(obj, dict):
+        return {k: strip_equals(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [strip_equals(i) for i in obj]
+    if isinstance(obj, str):
+        return obj.lstrip("=")
+    return obj
+
+@app.before_request
+def preprocess_request():
+    if request.is_json and request.data:
+        try:
+            data = request.get_json(force=True, silent=True)
+            if data:
+                import flask
+                request._cached_json = (strip_equals(data), request._cached_json[1] if hasattr(request, '_cached_json') and request._cached_json else strip_equals(data))
+        except Exception:
+            pass
+
 LDAP_HOST = os.getenv("LDAP_HOST", "helpdesk-openldap")
 LDAP_PORT = int(os.getenv("LDAP_PORT", 389))
 LDAP_BIND = os.getenv("LDAP_BIND", "cn=admin,dc=support,dc=local")
@@ -68,6 +89,10 @@ def get_pg():
     return psycopg2.connect(**PG)
 
 def pg_log(action_type, target_user, status, details, ticket_id="", session_id=""):
+    # Strip = prefix injected by n8n expressions
+    target_user = str(target_user).lstrip("=")
+    ticket_id   = str(ticket_id).lstrip("=")
+    session_id  = str(session_id).lstrip("=")
     try:
         conn = get_pg()
         cur = conn.cursor()
@@ -664,18 +689,13 @@ def dashboard_stats():
         cur.execute("SELECT COUNT(*) AS count FROM automation_logs WHERE action_type ILIKE '%kb%' OR action_type='SEARCH_KB'")
         kb_searches = cur.fetchone()["count"]
 
-        # Metric: Average resolution time (seconds between first and last log per ticket)
+        # Metric: Average resolution time from n1_tickets (created_at to updated_at for resolved)
         cur.execute("""
-            SELECT ROUND(AVG(EXTRACT(EPOCH FROM (max_t - min_t)))) AS avg_seconds
-            FROM (
-                SELECT ticket_id, MIN(created_at) AS min_t, MAX(created_at) AS max_t
-                FROM automation_logs
-                WHERE ticket_id != '' AND ticket_id IS NOT NULL
-                GROUP BY ticket_id
-                HAVING COUNT(*) > 1
-            ) sub
+            SELECT ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)))) AS avg_seconds
+            FROM n1_tickets
+            WHERE status = 'resolved' AND updated_at > created_at
         """)
-        avg_row = cur.fetchone()
+        avg_row    = cur.fetchone()
         avg_seconds = int(avg_row["avg_seconds"]) if avg_row and avg_row["avg_seconds"] else 0
         if avg_seconds < 60:
             avg_resolution_display = f"{avg_seconds}s"
@@ -1324,16 +1344,16 @@ def escalate():
         description: Escalation created
     """
     d            = request.json or {}
-    ticket_id    = d.get("ticket_id", "")
-    username     = d.get("username", "unknown")
-    display_name = d.get("display_name", username)
-    department   = d.get("department", "")
-    issue_type   = d.get("issue_type", "General")
-    priority     = d.get("priority", "medium")
-    summary      = d.get("summary", "")
-    steps_tried  = d.get("steps_tried", "")
-    error_details= d.get("error_details", "")
-    session_id   = d.get("session_id", "")
+    ticket_id    = d.get("ticket_id",    "").lstrip("=")
+    username     = d.get("username",     "unknown").lstrip("=")
+    display_name = d.get("display_name", "").lstrip("=") or username
+    department   = d.get("department",   "").lstrip("=")
+    issue_type   = d.get("issue_type",   "General").lstrip("=")
+    priority     = d.get("priority",     "medium").lstrip("=")
+    summary      = d.get("summary",      "").lstrip("=")
+    steps_tried  = d.get("steps_tried",  "").lstrip("=")
+    error_details= d.get("error_details","").lstrip("=")
+    session_id   = d.get("session_id",   "").lstrip("=")
     try:
         conn = get_pg(); cur = conn.cursor()
         cur.execute("""
@@ -1522,6 +1542,162 @@ def get_conversation(session_id):
         return jsonify({"success": True, "data": {"messages": messages}})
     except Exception as ex:
         return jsonify({"success": False, "error": str(ex)})
+
+# ── Tickets (N1 — DB source of truth) ─────────────────────────────────────────
+@app.route("/tickets", methods=["POST"])
+def create_ticket():
+    """
+    Create a new N1 support ticket in the DB (call this first, before Jira)
+    ---
+    tags: [Tickets]
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            internal_id: {type: string, description: "Short internal ref (e.g. TKT-001)"}
+            username: {type: string, example: jdoe}
+            department: {type: string, example: IT}
+            issue_type: {type: string, example: VPN}
+            priority: {type: string, example: high}
+            summary: {type: string}
+            session_id: {type: string}
+    responses:
+      200:
+        description: Ticket created, returns internal_id
+    """
+    import json as _json
+    d           = request.json or {}
+    username    = d.get("username",    "").lstrip("=")
+    department  = d.get("department",  "").lstrip("=")
+    issue_type  = d.get("issue_type",  "General").lstrip("=")
+    priority    = d.get("priority",    "medium").lstrip("=")
+    summary     = d.get("summary",     "").lstrip("=")
+    session_id  = d.get("session_id",  "").lstrip("=")
+    if not username:
+        return jsonify({"success": False, "error": "username required"})
+    try:
+        conn = get_pg(); cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO n1_tickets
+              (username, department, issue_type, priority, summary,
+               status, session_id, actions_taken, escalated)
+            VALUES (%s,%s,%s,%s,%s,'open',%s,'[]',false)
+            RETURNING id
+        """, (username, department, issue_type, priority, summary, session_id))
+        ticket_db_id = cur.fetchone()[0]
+        conn.commit(); conn.close()
+        pg_log("TICKET_CREATED", username, "open",
+               f"Ticket #{ticket_db_id} created — {issue_type}", "", session_id)
+        return jsonify({"success": True, "data": {
+            "ticket_db_id": ticket_db_id,
+            "message": f"Ticket #{ticket_db_id} created in DB. Now create it in Jira and call PATCH /tickets/{ticket_db_id} with the jira_key."
+        }})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+@app.route("/tickets", methods=["GET"])
+def get_tickets():
+    """
+    Get all N1 tickets with full details
+    ---
+    tags: [Tickets]
+    responses:
+      200:
+        description: List of tickets
+    """
+    import json as _json
+    try:
+        conn = get_pg(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT t.*,
+                   e.id AS escalation_id, e.priority AS esc_priority, e.status AS esc_status
+            FROM n1_tickets t
+            LEFT JOIN escalations e ON e.session_id = t.session_id AND e.username = t.username
+            ORDER BY t.created_at DESC
+        """)
+        rows = cur.fetchall(); conn.close()
+        tickets = []
+        for r in rows:
+            row = dict(r)
+            # Parse actions_taken if string
+            if isinstance(row.get("actions_taken"), str):
+                try: row["actions_taken"] = _json.loads(row["actions_taken"])
+                except: row["actions_taken"] = []
+            tickets.append(row)
+        return jsonify({"success": True, "data": {"tickets": tickets}})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
+
+@app.route("/tickets/<int:ticket_db_id>", methods=["PATCH"])
+def update_ticket(ticket_db_id):
+    """
+    Update ticket — set jira_key, status, summary, add actions
+    ---
+    tags: [Tickets]
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            jira_key: {type: string, example: PROJ-42}
+            status: {type: string, example: in_progress}
+            summary: {type: string}
+            action: {type: string, description: "Action to append to actions_taken list"}
+            escalated: {type: boolean}
+    responses:
+      200:
+        description: Updated
+    """
+    import json as _json
+    d          = request.json or {}
+    jira_key   = d.get("jira_key",  "").lstrip("=")
+    status     = d.get("status",    "").lstrip("=")
+    summary    = d.get("summary",   "").lstrip("=")
+    action     = d.get("action",    "").lstrip("=")
+    escalated  = d.get("escalated", None)
+    try:
+        conn = get_pg(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Get current ticket
+        cur.execute("SELECT * FROM n1_tickets WHERE id=%s", (ticket_db_id,))
+        ticket = cur.fetchone()
+        if not ticket:
+            conn.close()
+            return jsonify({"success": False, "error": "Ticket not found"})
+
+        # Build update fields
+        updates = ["updated_at=NOW()"]
+        params  = []
+        if jira_key:
+            updates.append("jira_key=%s"); params.append(jira_key)
+        if status:
+            updates.append("status=%s"); params.append(status)
+        if summary:
+            updates.append("summary=%s"); params.append(summary)
+        if escalated is not None:
+            updates.append("escalated=%s"); params.append(bool(escalated))
+            if bool(escalated):
+                updates.append("status=%s"); params.append("escalated")
+
+        # Append action to actions_taken
+        if action:
+            try:
+                actions = _json.loads(ticket["actions_taken"]) if isinstance(ticket["actions_taken"], str) else (ticket["actions_taken"] or [])
+            except:
+                actions = []
+            actions.append({"action": action, "ts": datetime.datetime.utcnow().isoformat()})
+            updates.append("actions_taken=%s"); params.append(_json.dumps(actions))
+
+        params.append(ticket_db_id)
+        cur2 = conn.cursor()
+        cur2.execute(f"UPDATE n1_tickets SET {', '.join(updates)} WHERE id=%s", params)
+        conn.commit(); conn.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        return jsonify({"success": False, "error": str(ex)})
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
